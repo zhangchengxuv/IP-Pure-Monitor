@@ -149,8 +149,8 @@ function createHudController(options) {
       toast: root.querySelector(".toast")
     };
 
-    // 拖动源禁止触摸滚动
-    nodes.mini.style.touchAction = "none";
+    // 整个卡片禁止触摸滚动，确保拖动不被浏览器手势接管
+    hudEl.style.touchAction = "none";
 
     bindEvents();
   }
@@ -412,7 +412,7 @@ function createHudController(options) {
   // ---- 拖动（Pointer Events，兼容鼠标 / 触控板 / 触摸）----
   function onPointerDown(e) {
     if (settings.lockHud) return;
-    if (e.button !== undefined && e.button !== 0) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     const t = e.target;
     if (!t || t.closest(".ip-btn, .refresh-btn, .detail-ip")) return;
     const rect = hudEl.getBoundingClientRect();
@@ -426,7 +426,6 @@ function createHudController(options) {
     };
     host.classList.add("dragging");
     hudEl.classList.add("dragging");
-    try { hudEl.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
   }
 
   function onPointerMove(e) {
@@ -452,7 +451,6 @@ function createHudController(options) {
     if (!drag || e.pointerId !== drag.pointerId) return;
     host.classList.remove("dragging");
     hudEl.classList.remove("dragging");
-    try { hudEl.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
     const moved = drag.moved;
     drag = null;
     if (moved) {
@@ -533,9 +531,9 @@ function createHudController(options) {
     nodes.dRefresh.addEventListener("click", refreshHandler);
 
     hudEl.addEventListener("pointerdown", onPointerDown);
-    hudEl.addEventListener("pointermove", onPointerMove);
-    hudEl.addEventListener("pointerup", onPointerUp);
-    hudEl.addEventListener("pointercancel", onPointerUp);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
 
     docMouseDown = function (e) {
       if (host && !host.contains(e.target) && state.pinned) {
@@ -609,6 +607,9 @@ function createHudController(options) {
     if (docMouseDown) document.removeEventListener("mousedown", docMouseDown, true);
     if (docKeyDown) document.removeEventListener("keydown", docKeyDown, true);
     if (resizeHandler) window.removeEventListener("resize", resizeHandler);
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    window.removeEventListener("pointercancel", onPointerUp);
     if (themeMedia && themeMedia.removeEventListener && themeChangeHandler) {
       themeMedia.removeEventListener("change", themeChangeHandler);
     }
