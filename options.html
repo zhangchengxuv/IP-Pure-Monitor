@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IP Pure Monitor · 设置</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="page">
+    <header class="page-header">
+      <span class="brand-dot" aria-hidden="true"></span>
+      <div>
+        <h1>IP Pure Monitor</h1>
+        <p class="subtitle">悬浮 HUD 显示设置</p>
+      </div>
+    </header>
+
+    <main class="card">
+      <section class="group">
+        <h2 class="group-title">显示</h2>
+
+        <label class="field toggle-field">
+          <span class="field-text">
+            <span class="field-label">在网页中显示 IP 状态悬浮条</span>
+            <span class="field-desc">关闭后不再向网页注入悬浮组件</span>
+          </span>
+          <input type="checkbox" id="showHud" class="switch">
+        </label>
+
+        <div class="field">
+          <span class="field-text">
+            <span class="field-label">悬浮条透明度</span>
+            <span class="field-desc">范围 60% ~ 100%，默认约 82%</span>
+          </span>
+          <div class="range-row">
+            <input type="range" id="hudOpacity" min="60" max="100" step="1">
+            <output id="hudOpacityVal" class="range-val">82%</output>
+          </div>
+        </div>
+      </section>
+
+      <section class="group">
+        <h2 class="group-title">刷新</h2>
+
+        <div class="field">
+          <span class="field-text">
+            <span class="field-label">自动刷新时间</span>
+            <span class="field-desc">同时决定后台缓存的过期时长</span>
+          </span>
+          <div class="options" id="refreshInterval" role="radiogroup" aria-label="自动刷新时间">
+            <label class="chip"><input type="radio" name="refreshInterval" value="30000"><span>30 秒</span></label>
+            <label class="chip"><input type="radio" name="refreshInterval" value="60000"><span>60 秒</span></label>
+            <label class="chip"><input type="radio" name="refreshInterval" value="120000"><span>2 分钟</span></label>
+            <label class="chip"><input type="radio" name="refreshInterval" value="300000"><span>5 分钟</span></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="group">
+        <h2 class="group-title">IP 显示</h2>
+
+        <div class="field">
+          <span class="field-text">
+            <span class="field-label">默认显示</span>
+            <span class="field-desc">仅影响迷你状态条；展开详情始终显示完整地址</span>
+          </span>
+          <div class="options" id="maskIp" role="radiogroup" aria-label="默认 IP 显示方式">
+            <label class="chip"><input type="radio" name="maskIp" value="false"><span>完整 IP</span></label>
+            <label class="chip"><input type="radio" name="maskIp" value="true"><span>隐藏后半部分</span></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="group">
+        <h2 class="group-title">交互</h2>
+
+        <label class="field toggle-field">
+          <span class="field-text">
+            <span class="field-label">鼠标悬停展开详情</span>
+            <span class="field-desc">关闭后仅点击状态条可展开</span>
+          </span>
+          <input type="checkbox" id="hoverExpand" class="switch">
+        </label>
+      </section>
+
+      <div class="saved" id="saved" role="status" aria-live="polite">已保存</div>
+    </main>
+
+    <footer class="page-footer">
+      <p>数据来源：IPPure · <code>https://my.ippure.com/v1/info</code>（测试阶段，字段可能调整）</p>
+    </footer>
+  </div>
+
+  <script src="shared/constants.js"></script>
+  <script src="shared/settings.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

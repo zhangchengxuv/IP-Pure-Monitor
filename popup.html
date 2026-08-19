@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IP Pure Monitor</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="popup-header">
+    <span class="brand-dot" aria-hidden="true"></span>
+    <h1>IP Pure Monitor</h1>
+  </header>
+
+  <main class="popup-body">
+    <div class="location">
+      <span class="flag" id="flag" aria-hidden="true">🌐</span>
+      <span class="country" id="country">检测中…</span>
+    </div>
+
+    <div class="ip-row">
+      <span class="ip" id="ip" title="点击复制 IP">—</span>
+      <button class="copy-btn" id="copy" type="button" title="复制 IP" aria-label="复制 IP">复制</button>
+    </div>
+
+    <div class="score-row">
+      <span class="score-label">风险分</span>
+      <span class="score" id="score">—</span>
+      <span class="score-total">/ 100</span>
+      <span class="score-badge" id="level" hidden></span>
+    </div>
+
+    <div class="meta">
+      <div class="meta-row"><span class="meta-label">住宅 IP</span><span class="meta-value" id="residential">—</span></div>
+      <div class="meta-row"><span class="meta-label">IP 类型</span><span class="meta-value" id="type">—</span></div>
+      <div class="meta-row"><span class="meta-label">ASN</span><span class="meta-value" id="asn">—</span></div>
+      <div class="meta-row"><span class="meta-label">组织</span><span class="meta-value" id="org">—</span></div>
+    </div>
+
+    <div class="status" id="status" role="status" aria-live="polite"></div>
+  </main>
+
+  <footer class="popup-footer">
+    <button class="btn" id="refresh" type="button">刷新</button>
+    <button class="btn btn-ghost" id="settings" type="button">设置</button>
+  </footer>
+
+  <script src="shared/constants.js"></script>
+  <script src="shared/utils.js"></script>
+  <script src="shared/normalize.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

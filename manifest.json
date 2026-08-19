@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "IP Pure Monitor",
+  "version": "1.0.0",
+  "description": "在网页右上角以轻量悬浮 HUD 显示当前网络出口 IP 与 IPPure 风险信息。",
+  "minimum_chrome_version": "88",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://my.ippure.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "IP Pure Monitor",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "shared/constants.js",
+        "shared/utils.js",
+        "shared/normalize.js",
+        "shared/settings.js",
+        "content/constants.js",
+        "content/styles.js",
+        "content/ui.js",
+        "content/main.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
