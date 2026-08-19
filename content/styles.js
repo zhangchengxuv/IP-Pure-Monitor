@@ -98,6 +98,7 @@ const HUD_CSS = `
   opacity: 0.35;
   color: var(--hud-fg);
   transition: opacity 150ms ease;
+  padding: 4px 2px;
 }
 
 .drag-handle:hover {

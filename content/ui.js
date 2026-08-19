@@ -54,8 +54,8 @@ function createHudController(options) {
       top: "72px",
       right: "12px",
       left: "auto",
-      zIndex: "2147483647",
-      pointerEvents: "none"
+      "z-index": "2147483647",
+      "pointer-events": "none"
     };
     for (const k in pos) {
       if (Object.prototype.hasOwnProperty.call(pos, k)) {
@@ -382,8 +382,11 @@ function createHudController(options) {
     if (state.expanded) return;
     state.expanded = true;
     nodes.detail.hidden = false;
-    clampPositionToViewport();
-    applyPosition();
+    // 拖动中不重置位置，避免打断拖动
+    if (!drag) {
+      clampPositionToViewport();
+      applyPosition();
+    }
   }
 
   function collapse() {
@@ -415,6 +418,8 @@ function createHudController(options) {
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const t = e.target;
     if (!t || t.closest(".ip-btn, .refresh-btn, .detail-ip")) return;
+    clearTimeout(state.hoverEnterTimer);
+    clearTimeout(state.hoverLeaveTimer);
     const rect = hudEl.getBoundingClientRect();
     drag = {
       pointerId: e.pointerId,
@@ -488,7 +493,7 @@ function createHudController(options) {
       clearTimeout(state.hoverLeaveTimer);
       clearTimeout(state.hoverEnterTimer);
       state.hoverEnterTimer = setTimeout(function () {
-        if (settings.hoverExpand && !state.pinned) expand();
+        if (settings.hoverExpand && !state.pinned && !drag) expand();
       }, HOVER_EXPAND_DELAY_MS);
     });
 
@@ -531,9 +536,9 @@ function createHudController(options) {
     nodes.dRefresh.addEventListener("click", refreshHandler);
 
     hudEl.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    window.addEventListener("pointercancel", onPointerUp);
+    window.addEventListener("pointermove", onPointerMove, true);
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("pointercancel", onPointerUp, true);
 
     docMouseDown = function (e) {
       if (host && !host.contains(e.target) && state.pinned) {
@@ -607,9 +612,9 @@ function createHudController(options) {
     if (docMouseDown) document.removeEventListener("mousedown", docMouseDown, true);
     if (docKeyDown) document.removeEventListener("keydown", docKeyDown, true);
     if (resizeHandler) window.removeEventListener("resize", resizeHandler);
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", onPointerUp);
-    window.removeEventListener("pointercancel", onPointerUp);
+    window.removeEventListener("pointermove", onPointerMove, true);
+    window.removeEventListener("pointerup", onPointerUp, true);
+    window.removeEventListener("pointercancel", onPointerUp, true);
     if (themeMedia && themeMedia.removeEventListener && themeChangeHandler) {
       themeMedia.removeEventListener("change", themeChangeHandler);
     }
