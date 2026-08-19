@@ -2,12 +2,12 @@
 
 // ============================================================================
 // content/ui.js — HUD UI 控制器
-// 负责 Shadow DOM 构建、渲染与交互。
-// 动态文本一律通过 textContent 赋值，绝不把 API 返回内容写入 innerHTML；
-// innerHTML 仅用于扩展自身的静态模板结构。
+// 负责 Shadow DOM 构建、渲染、拖动/吸边、双击复位、深浅色、交互。
+// 动态文本一律 textContent，innerHTML 仅用于扩展自身静态模板。
 // ============================================================================
 
 const SVG_REFRESH = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>';
+const SVG_DRAG_HANDLE = '<svg viewBox="0 0 6 16" width="6" height="16" fill="currentColor" aria-hidden="true"><circle cx="1.5" cy="2" r="1.2"/><circle cx="1.5" cy="8" r="1.2"/><circle cx="1.5" cy="14" r="1.2"/><circle cx="4.5" cy="2" r="1.2"/><circle cx="4.5" cy="8" r="1.2"/><circle cx="4.5" cy="14" r="1.2"/></svg>';
 
 function createHudController(options) {
   const opts = options || {};
@@ -18,8 +18,11 @@ function createHudController(options) {
   let hudEl = null;
   let nodes = {};
   let settings = Object.assign({}, DEFAULT_SETTINGS);
+  let position = Object.assign({}, DEFAULT_HUD_POSITION);
   let state = {
     data: null,
+    latency: null,
+    latencyStale: false,
     loading: false,
     stale: false,
     error: null,
@@ -29,11 +32,18 @@ function createHudController(options) {
     copyTimer: null,
     flashTimer: null,
     noticeTimer: null,
+    toastTimer: null,
     hoverEnterTimer: null,
-    hoverLeaveTimer: null
+    hoverLeaveTimer: null,
+    resizeSaveTimer: null
   };
   let docMouseDown = null;
   let docKeyDown = null;
+  let resizeHandler = null;
+  let themeMedia = null;
+  let themeChangeHandler = null;
+  let drag = null;
+  let suppressClickUntil = 0;
 
   function buildDom() {
     host = document.createElement("div");
@@ -41,8 +51,9 @@ function createHudController(options) {
     host.setAttribute("data-ippure-monitor", "");
     const pos = {
       position: "fixed",
-      top: "12px",
+      top: "72px",
       right: "12px",
+      left: "auto",
       zIndex: "2147483647",
       pointerEvents: "none"
     };
@@ -65,9 +76,11 @@ function createHudController(options) {
 
     root.innerHTML =
       '<div class="mini">' +
+        '<span class="drag-handle" aria-hidden="true" title="拖动移动 · 双击恢复默认位置">' + SVG_DRAG_HANDLE + '</span>' +
         '<span class="flag" aria-hidden="true"></span>' +
         '<button class="ip-btn" type="button" title="点击复制 IP" aria-label="复制 IP"></button>' +
         '<span class="risk"></span>' +
+        '<span class="latency"></span>' +
         '<button class="refresh-btn" type="button" aria-label="刷新 IP 信息" title="刷新 IP 信息">' + SVG_REFRESH + '<span class="warn-dot" aria-hidden="true"></span></button>' +
       '</div>' +
       '<div class="detail" hidden>' +
@@ -79,6 +92,7 @@ function createHudController(options) {
         '<div class="detail-ip" title="点击复制 IP"></div>' +
         '<div class="row"><span class="label">IPPure 风险分</span><span class="value risk-value"></span></div>' +
         '<div class="meter"><div class="meter-fill"></div></div>' +
+        '<div class="row"><span class="label">ChatGPT</span><span class="value latency-value"></span></div>' +
         '<div class="row"><span class="label">住宅 IP</span><span class="value res-value"></span></div>' +
         '<div class="row"><span class="label">IP 类型</span><span class="value type-value"></span></div>' +
         '<div class="row"><span class="label">ASN</span><span class="value asn-value"></span></div>' +
@@ -90,7 +104,8 @@ function createHudController(options) {
           '<span class="ip-changed" hidden>IP 已更新</span>' +
           '<button class="refresh-btn" type="button" aria-label="刷新 IP 信息" title="刷新 IP 信息">' + SVG_REFRESH + '<span class="warn-dot" aria-hidden="true"></span></button>' +
         '</div>' +
-      '</div>';
+      '</div>' +
+      '<span class="toast" hidden></span>';
 
     shadow.appendChild(root);
     hudEl = root;
@@ -105,11 +120,14 @@ function createHudController(options) {
     riskEl.appendChild(riskNum);
 
     nodes = {
+      mini: root.querySelector(".mini"),
+      dragHandle: root.querySelector(".drag-handle"),
       flag: root.querySelector(".mini .flag"),
       ipBtn: root.querySelector(".ip-btn"),
       risk: riskEl,
       riskDot: riskDot,
       riskNum: riskNum,
+      latency: root.querySelector(".latency"),
       refreshBtn: root.querySelector(".mini .refresh-btn"),
       detail: root.querySelector(".detail"),
       dFlag: root.querySelector(".detail-head .flag"),
@@ -117,6 +135,7 @@ function createHudController(options) {
       dRiskBadge: root.querySelector(".risk-badge"),
       dIp: root.querySelector(".detail-ip"),
       dScore: root.querySelector(".risk-value"),
+      dLatency: root.querySelector(".latency-value"),
       dMeter: root.querySelector(".meter-fill"),
       dResidential: root.querySelector(".res-value"),
       dType: root.querySelector(".type-value"),
@@ -126,15 +145,76 @@ function createHudController(options) {
       dTz: root.querySelector(".tz-value"),
       dUpdated: root.querySelector(".updated"),
       dIpChanged: root.querySelector(".ip-changed"),
-      dRefresh: root.querySelector(".detail-foot .refresh-btn")
+      dRefresh: root.querySelector(".detail-foot .refresh-btn"),
+      toast: root.querySelector(".toast")
     };
+
+    // 拖动源禁止触摸滚动
+    nodes.mini.style.touchAction = "none";
 
     bindEvents();
   }
 
+  // ---- 位置系统 ----
+  function applyPosition() {
+    if (!host) return;
+    if (position.side === "left") {
+      host.style.setProperty("left", position.offsetX + "px", "important");
+      host.style.setProperty("right", "auto", "important");
+    } else {
+      host.style.setProperty("right", position.offsetX + "px", "important");
+      host.style.setProperty("left", "auto", "important");
+    }
+    host.style.setProperty("top", position.offsetY + "px", "important");
+  }
+
+  function clampPositionToViewport() {
+    const w = window.innerWidth || 0;
+    const h = window.innerHeight || 0;
+    const rect = hudEl ? hudEl.getBoundingClientRect() : { width: 200, height: 38 };
+    const maxX = Math.max(0, w - rect.width - MIN_VISIBLE_MARGIN);
+    const maxY = Math.max(0, h - rect.height - MIN_VISIBLE_MARGIN);
+    position.offsetX = Math.max(0, Math.min(position.offsetX, maxX));
+    position.offsetY = Math.max(0, Math.min(position.offsetY, maxY));
+  }
+
+  function snapToEdge() {
+    if (!hudEl) return;
+    const w = window.innerWidth || 0;
+    const rect = hudEl.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    position.side = (w > 0 && centerX < w / 2) ? "left" : "right";
+    position.offsetX = EDGE_MARGIN;
+    position.offsetY = Math.round(rect.top);
+    clampPositionToViewport();
+    applyPosition();
+    savePosition(position);
+  }
+
+  function resetPosition() {
+    position = Object.assign({}, DEFAULT_HUD_POSITION);
+    applyPosition();
+    savePosition(position);
+    showToast("位置已重置");
+  }
+
+  function showToast(text) {
+    if (!nodes.toast) return;
+    nodes.toast.textContent = text;
+    nodes.toast.hidden = false;
+    requestAnimationFrame(function () { nodes.toast.classList.add("show"); });
+    clearTimeout(state.toastTimer);
+    state.toastTimer = setTimeout(function () {
+      nodes.toast.classList.remove("show");
+      nodes.toast.hidden = true;
+    }, POSITION_RESET_FEEDBACK_MS);
+  }
+
+  // ---- 渲染 ----
   function setLoading() {
     state.loading = true;
     state.data = null;
+    setLatency(null, false);
     nodes.flag.textContent = "🌐";
     nodes.ipBtn.textContent = "正在检测 IP…";
     nodes.ipBtn.disabled = true;
@@ -177,6 +257,18 @@ function createHudController(options) {
     hudEl.style.setProperty("--risk-bg", hexToRgba(color, 0.16));
     hudEl.style.setProperty("--risk-border", hexToRgba(color, 0.5));
     hudEl.style.setProperty("--risk-glow", hexToRgba(color, 0.55));
+  }
+
+  function setLatency(ms, stale) {
+    state.latency = ms;
+    state.latencyStale = Boolean(stale);
+    if (ms === null || ms === undefined) {
+      nodes.latency.textContent = "GPT —";
+      nodes.dLatency.textContent = "—";
+    } else {
+      nodes.latency.textContent = "GPT " + ms + "ms";
+      nodes.dLatency.textContent = ms + " ms";
+    }
   }
 
   function renderMiniFrom(data) {
@@ -241,6 +333,9 @@ function createHudController(options) {
     state.stale = Boolean(m.stale);
     state.error = m.error || null;
     state.loading = false;
+    if (m.latency !== undefined) {
+      setLatency(m.latency, m.latencyStale);
+    }
 
     if (!data) {
       nodes.flag.textContent = "🌐";
@@ -287,6 +382,8 @@ function createHudController(options) {
     if (state.expanded) return;
     state.expanded = true;
     nodes.detail.hidden = false;
+    clampPositionToViewport();
+    applyPosition();
   }
 
   function collapse() {
@@ -312,6 +409,81 @@ function createHudController(options) {
     });
   }
 
+  // ---- 拖动（Pointer Events，兼容鼠标 / 触控板 / 触摸）----
+  function onPointerDown(e) {
+    if (settings.lockHud) return;
+    if (e.button !== undefined && e.button !== 0) return;
+    const t = e.target;
+    if (!t || t.closest(".ip-btn, .refresh-btn, .detail-ip")) return;
+    const rect = hudEl.getBoundingClientRect();
+    drag = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startLeft: rect.left,
+      startTop: rect.top,
+      moved: false
+    };
+    host.classList.add("dragging");
+    hudEl.classList.add("dragging");
+    try { hudEl.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  }
+
+  function onPointerMove(e) {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    if (!drag.moved && Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
+    drag.moved = true;
+    const w = window.innerWidth || 0;
+    const h = window.innerHeight || 0;
+    const rect = hudEl.getBoundingClientRect();
+    let left = drag.startLeft + dx;
+    let top = drag.startTop + dy;
+    left = Math.max(MIN_VISIBLE_MARGIN - rect.width, Math.min(left, w - MIN_VISIBLE_MARGIN));
+    top = Math.max(0, Math.min(top, h - MIN_VISIBLE_MARGIN));
+    host.style.setProperty("left", left + "px", "important");
+    host.style.setProperty("right", "auto", "important");
+    host.style.setProperty("top", top + "px", "important");
+    e.preventDefault();
+  }
+
+  function onPointerUp(e) {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    host.classList.remove("dragging");
+    hudEl.classList.remove("dragging");
+    try { hudEl.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    const moved = drag.moved;
+    drag = null;
+    if (moved) {
+      suppressClickUntil = Date.now() + 200;
+      snapToEdge();
+    }
+  }
+
+  // ---- 深浅色 ----
+  function detectDark() {
+    try {
+      const el = document.body || document.documentElement;
+      const bg = getComputedStyle(el).backgroundColor;
+      const m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/.exec(bg);
+      if (m) {
+        const alpha = m[4] === undefined ? 1 : Number(m[4]);
+        if (alpha >= 0.1) {
+          const lum = (0.299 * (+m[1]) + 0.587 * (+m[2]) + 0.114 * (+m[3])) / 255;
+          return lum < 0.5;
+        }
+      }
+    } catch (e) { /* ignore */ }
+    if (window.matchMedia) return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return true;
+  }
+
+  function applyColorScheme() {
+    if (!hudEl) return;
+    hudEl.classList.toggle("light", !detectDark());
+  }
+
   function bindEvents() {
     hudEl.addEventListener("mouseenter", function () {
       if (!settings.hoverExpand) return;
@@ -325,18 +497,23 @@ function createHudController(options) {
     hudEl.addEventListener("mouseleave", function () {
       clearTimeout(state.hoverEnterTimer);
       clearTimeout(state.hoverLeaveTimer);
-      state.hoverLeaveTimer = setTimeout(function () {
-        collapse();
-      }, HOVER_COLLAPSE_DELAY_MS);
+      state.hoverLeaveTimer = setTimeout(function () { collapse(); }, HOVER_COLLAPSE_DELAY_MS);
     });
 
-    hudEl.querySelector(".mini").addEventListener("click", function () {
+    nodes.mini.addEventListener("click", function () {
+      if (Date.now() < suppressClickUntil) return;
       state.pinned = !state.pinned;
-      if (state.pinned) {
-        expand();
-      } else {
-        collapse();
-      }
+      if (state.pinned) expand();
+      else collapse();
+    });
+
+    nodes.dragHandle.addEventListener("click", function (e) {
+      e.stopPropagation();
+    });
+    nodes.dragHandle.addEventListener("dblclick", function (e) {
+      e.stopPropagation();
+      if (settings.lockHud) return;
+      resetPosition();
     });
 
     nodes.ipBtn.addEventListener("click", function (e) {
@@ -354,6 +531,11 @@ function createHudController(options) {
     }
     nodes.refreshBtn.addEventListener("click", refreshHandler);
     nodes.dRefresh.addEventListener("click", refreshHandler);
+
+    hudEl.addEventListener("pointerdown", onPointerDown);
+    hudEl.addEventListener("pointermove", onPointerMove);
+    hudEl.addEventListener("pointerup", onPointerUp);
+    hudEl.addEventListener("pointercancel", onPointerUp);
 
     docMouseDown = function (e) {
       if (host && !host.contains(e.target) && state.pinned) {
@@ -375,22 +557,47 @@ function createHudController(options) {
     clearTimeout(state.copyTimer);
     clearTimeout(state.flashTimer);
     clearTimeout(state.noticeTimer);
+    clearTimeout(state.toastTimer);
     clearTimeout(state.hoverEnterTimer);
     clearTimeout(state.hoverLeaveTimer);
+    clearTimeout(state.resizeSaveTimer);
   }
 
-  function mount() {
+  function mount(initialPosition) {
     if (host) return;
+    if (initialPosition) position = sanitizePosition(initialPosition);
     buildDom();
     (document.body || document.documentElement).appendChild(host);
+    applyColorScheme();
     applySettings(settings);
+    applyPosition();
     setLoading();
+    bindGlobalEvents();
+  }
+
+  function bindGlobalEvents() {
+    resizeHandler = function () {
+      clampPositionToViewport();
+      applyPosition();
+      clearTimeout(state.resizeSaveTimer);
+      state.resizeSaveTimer = setTimeout(function () { savePosition(position); }, 300);
+    };
+    window.addEventListener("resize", resizeHandler);
+
+    if (window.matchMedia) {
+      themeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+      if (themeMedia.addEventListener) {
+        themeChangeHandler = function () { applyColorScheme(); };
+        themeMedia.addEventListener("change", themeChangeHandler);
+      }
+    }
   }
 
   function applySettings(next) {
     settings = sanitizeSettings(next);
     if (hudEl) {
       hudEl.style.opacity = String(settings.hudOpacity);
+      hudEl.classList.toggle("locked", settings.lockHud);
     }
     if (!settings.hoverExpand && !state.pinned && state.expanded) {
       collapse();
@@ -401,6 +608,10 @@ function createHudController(options) {
     clearTimers();
     if (docMouseDown) document.removeEventListener("mousedown", docMouseDown, true);
     if (docKeyDown) document.removeEventListener("keydown", docKeyDown, true);
+    if (resizeHandler) window.removeEventListener("resize", resizeHandler);
+    if (themeMedia && themeMedia.removeEventListener && themeChangeHandler) {
+      themeMedia.removeEventListener("change", themeChangeHandler);
+    }
     if (host && host.parentNode) host.parentNode.removeChild(host);
     host = null;
     shadow = null;
@@ -417,8 +628,12 @@ function createHudController(options) {
     setLoading: setLoading,
     setRefreshing: setRefreshing,
     setSettings: applySettings,
-    flashIpChange: flashIpChange
+    flashIpChange: flashIpChange,
+    refreshColorScheme: applyColorScheme
   };
 }
+
+
+
 
 

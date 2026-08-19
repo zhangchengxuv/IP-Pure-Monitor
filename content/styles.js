@@ -1,17 +1,17 @@
 "use strict";
 
 // ============================================================================
-// content/styles.js
-// HUD 的全部样式，作为字符串注入 Shadow DOM，避免污染网页、也避免被网页污染。
-// 视觉方向：现代、克制、半透明 Glassmorphism，偏深色 HUD（在深浅色网页上都稳定）。
+// content/styles.js — HUD 样式（字符串注入 Shadow DOM）
+// 支持：深浅色自适应、拖动手柄、边缘吸附动画、ChatGPT 延迟显示。
 // ============================================================================
 
 const HUD_CSS = `
 :host {
   all: initial;
   position: fixed !important;
-  top: 12px !important;
+  top: 72px !important;
   right: 12px !important;
+  left: auto !important;
   z-index: 2147483647 !important;
   pointer-events: none !important;
   font-family: Inter, "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif !important;
@@ -20,6 +20,11 @@ const HUD_CSS = `
   box-sizing: border-box !important;
   direction: ltr !important;
   text-align: left !important;
+  transition: left 160ms ease, right 160ms ease, top 160ms ease;
+}
+
+:host(.dragging) {
+  transition: none !important;
 }
 
 *,
@@ -31,34 +36,85 @@ const HUD_CSS = `
 }
 
 .hud {
+  --hud-bg: rgba(30, 32, 37, 0.86);
+  --hud-bg-solid: #1e2025;
+  --hud-fg: #ececf1;
+  --hud-fg-strong: #ffffff;
+  --hud-muted: #9d9d9d;
+  --hud-border: rgba(255, 255, 255, 0.10);
+  --hud-hover: rgba(255, 255, 255, 0.08);
+  --hud-meter-bg: rgba(255, 255, 255, 0.12);
+
   pointer-events: auto;
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  min-width: 190px;
+  min-width: 200px;
   max-width: 320px;
-  color: #e8ecf3;
-  background: rgba(19, 23, 33, 0.84);
+  color: var(--hud-fg);
+  background: var(--hud-bg);
   -webkit-backdrop-filter: blur(16px) saturate(140%);
   backdrop-filter: blur(16px) saturate(140%);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.20);
-  overflow: hidden;
+  border: 1px solid var(--hud-border);
+  border-radius: 13px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16), 0 1px 3px rgba(0, 0, 0, 0.18);
+  overflow: visible;
   user-select: none;
   -webkit-user-select: none;
-  transition: box-shadow 200ms ease, border-color 200ms ease;
+}
+
+.hud.light {
+  --hud-bg: rgba(255, 255, 255, 0.88);
+  --hud-bg-solid: #ffffff;
+  --hud-fg: #2d2d2d;
+  --hud-fg-strong: #111111;
+  --hud-muted: #6e6e6e;
+  --hud-border: rgba(0, 0, 0, 0.08);
+  --hud-hover: rgba(0, 0, 0, 0.05);
+  --hud-meter-bg: rgba(0, 0, 0, 0.08);
 }
 
 .mini {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   height: 38px;
   padding: 0 10px;
   white-space: nowrap;
+  cursor: grab;
+}
+
+.hud.dragging .mini {
+  cursor: grabbing;
+}
+
+.drag-handle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  opacity: 0.35;
+  color: var(--hud-fg);
+  transition: opacity 150ms ease;
+}
+
+.drag-handle:hover {
+  opacity: 0.7;
+}
+
+.drag-handle svg {
+  display: block;
+}
+
+.hud.locked .mini {
   cursor: default;
+}
+
+.hud.locked .drag-handle {
+  cursor: default;
+  opacity: 0.25;
 }
 
 .flag {
@@ -74,14 +130,14 @@ const HUD_CSS = `
   border: none;
   padding: 0;
   margin: 0;
-  color: #f2f5f9;
+  color: var(--hud-fg-strong);
   font: inherit;
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.2px;
   cursor: pointer;
   flex: 0 1 auto;
-  max-width: 126px;
+  max-width: 104px;
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: left;
@@ -89,7 +145,6 @@ const HUD_CSS = `
 }
 
 .ip-btn:hover {
-  color: #ffffff;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -97,7 +152,7 @@ const HUD_CSS = `
 .ip-btn:disabled {
   cursor: default;
   text-decoration: none;
-  color: #c3cad6;
+  color: var(--hud-muted);
 }
 
 .risk {
@@ -106,7 +161,6 @@ const HUD_CSS = `
   gap: 4px;
   cursor: default;
   flex: 0 0 auto;
-  margin-left: auto;
 }
 
 .risk-dot {
@@ -121,7 +175,15 @@ const HUD_CSS = `
 .risk-num {
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  color: #cbd5e1;
+  color: var(--hud-muted);
+}
+
+.latency {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--hud-muted);
+  white-space: nowrap;
 }
 
 .refresh-btn {
@@ -131,7 +193,7 @@ const HUD_CSS = `
   border: none;
   padding: 3px;
   margin: 0;
-  color: #a8b3c4;
+  color: var(--hud-muted);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -143,8 +205,8 @@ const HUD_CSS = `
 }
 
 .refresh-btn:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.10);
+  color: var(--hud-fg-strong);
+  background: var(--hud-hover);
 }
 
 .refresh-btn svg {
@@ -174,7 +236,7 @@ const HUD_CSS = `
 .detail {
   display: block;
   padding: 0 12px 11px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--hud-border);
   animation: hud-fade-in 180ms ease;
 }
 
@@ -196,7 +258,7 @@ const HUD_CSS = `
 .country {
   font-size: 13px;
   font-weight: 600;
-  color: #f2f5f9;
+  color: var(--hud-fg-strong);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -218,7 +280,7 @@ const HUD_CSS = `
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.3px;
-  color: #ffffff;
+  color: var(--hud-fg-strong);
   padding: 3px 0 9px;
   word-break: break-all;
   cursor: pointer;
@@ -238,13 +300,13 @@ const HUD_CSS = `
 }
 
 .row .label {
-  color: #8b96a8;
+  color: var(--hud-muted);
   font-size: 11.5px;
   flex: 0 0 auto;
 }
 
 .row .value {
-  color: #e8ecf3;
+  color: var(--hud-fg);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-align: right;
@@ -254,7 +316,7 @@ const HUD_CSS = `
 .meter {
   height: 4px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.10);
+  background: var(--hud-meter-bg);
   overflow: hidden;
   margin: 3px 0 7px;
 }
@@ -273,11 +335,11 @@ const HUD_CSS = `
   gap: 8px;
   margin-top: 9px;
   padding-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--hud-border);
 }
 
 .updated {
-  color: #8b96a8;
+  color: var(--hud-muted);
   font-size: 11px;
 }
 
@@ -289,6 +351,28 @@ const HUD_CSS = `
 
 .detail-foot .refresh-btn {
   margin-left: auto;
+}
+
+.toast {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--hud-fg);
+  background: var(--hud-bg-solid);
+  border: 1px solid var(--hud-border);
+  border-radius: 999px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+  white-space: nowrap;
+  z-index: 5;
+}
+
+.toast.show {
+  opacity: 1;
 }
 
 .hud.ip-flash {
@@ -306,12 +390,13 @@ const HUD_CSS = `
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hud { transition: none; }
+  :host { transition: none; }
   .detail { animation: none; }
   .refresh-btn.spinning svg { animation: none; }
   .meter-fill { transition: none; }
   .ip-changed { animation: none; }
   .risk-dot { transition: none; }
+  .toast { transition: none; }
 }
 `;
 

@@ -34,6 +34,7 @@ function sanitizeSettings(settings) {
   if (typeof s.showHud !== "boolean") s.showHud = DEFAULT_SETTINGS.showHud;
   if (typeof s.maskIp !== "boolean") s.maskIp = DEFAULT_SETTINGS.maskIp;
   if (typeof s.hoverExpand !== "boolean") s.hoverExpand = DEFAULT_SETTINGS.hoverExpand;
+  if (typeof s.lockHud !== "boolean") s.lockHud = DEFAULT_SETTINGS.lockHud;
 
   let validInterval = false;
   for (let i = 0; i < REFRESH_OPTIONS.length; i++) {
@@ -124,4 +125,60 @@ function watchSettings(callback) {
       });
     }
   } catch (e) { /* ignore */ }
+}
+
+// ============================================================================
+// HUD 位置：独立使用 chrome.storage.local 持久化（用户明确要求 local）。
+// 保存的是相对位置（side + offsetX + offsetY），而非绝对屏幕坐标。
+// ============================================================================
+
+function sanitizePosition(pos) {
+  const p = {
+    side: DEFAULT_HUD_POSITION.side,
+    offsetX: DEFAULT_HUD_POSITION.offsetX,
+    offsetY: DEFAULT_HUD_POSITION.offsetY
+  };
+  if (pos && typeof pos === "object") {
+    if (pos.side === "left" || pos.side === "right") p.side = pos.side;
+    const x = Number(pos.offsetX);
+    const y = Number(pos.offsetY);
+    if (isFinite(x) && x >= 0 && x <= 10000) p.offsetX = Math.round(x);
+    if (isFinite(y) && y >= 0 && y <= 10000) p.offsetY = Math.round(y);
+  }
+  return p;
+}
+
+function loadPosition() {
+  return new Promise(function (resolve) {
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get("hudPosition", function (result) {
+          if (chrome.runtime && chrome.runtime.lastError) {
+            resolve(sanitizePosition(null));
+            return;
+          }
+          resolve(sanitizePosition(result && result.hudPosition));
+        });
+      } else {
+        resolve(sanitizePosition(null));
+      }
+    } catch (e) {
+      resolve(sanitizePosition(null));
+    }
+  });
+}
+
+function savePosition(position) {
+  const p = sanitizePosition(position);
+  return new Promise(function (resolve) {
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ hudPosition: p }, function () { resolve(p); });
+      } else {
+        resolve(p);
+      }
+    } catch (e) {
+      resolve(p);
+    }
+  });
 }

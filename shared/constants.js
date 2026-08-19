@@ -31,7 +31,8 @@ const DEFAULT_SETTINGS = {
   refreshInterval: 60000, // 自动刷新间隔，默认 60 秒
   maskIp: false,          // 是否隐藏 IP 后半部分
   hudOpacity: 0.82,       // 悬浮条透明度 0.6 ~ 1.0
-  hoverExpand: true       // 鼠标悬停是否展开详情
+  hoverExpand: true,      // 鼠标悬停是否展开详情
+  lockHud: false          // 是否锁定 HUD 位置（禁止拖动）
 };
 
 // 请求超时（毫秒）
@@ -39,3 +40,6 @@ const REQUEST_TIMEOUT_MS = 8000;
 
 // 默认缓存时长（毫秒），实际会跟随设置中的刷新间隔
 const DEFAULT_CACHE_TTL_MS = 60000;
+
+// HUD 默认位置（ChatGPT 桌面网页右上角，避开顶部按钮）
+const DEFAULT_HUD_POSITION = { side: "right", offsetX: 12, offsetY: 72 };

@@ -2,8 +2,10 @@
 
 // ============================================================================
 // background.js — Service Worker
-// 唯一职责：请求固定的 IPPure API 并做全局缓存。
-// 不接受 content script 任意指定 URL，API 地址写死在此处。
+// 职责：
+//   1) 请求固定的 IPPure API 并做全局缓存；
+//   2) 测量到 ChatGPT 的延迟（TTFB）并做全局缓存。
+// 不接受 content script 任意指定 URL，两个 URL 均写死在此处。
 // ============================================================================
 
 importScripts(
@@ -13,18 +15,19 @@ importScripts(
   "shared/settings.js"
 );
 
-// 固定 API 地址
+// 固定地址
 const API_URL = "https://my.ippure.com/v1/info";
-const TIMEOUT_MS = REQUEST_TIMEOUT_MS; // 8000ms
+const LATENCY_URL = "https://chatgpt.com/";
+const TIMEOUT_MS = REQUEST_TIMEOUT_MS;   // 8000ms
+const LATENCY_TIMEOUT_MS = 5000;         // 延迟测量超时
 
 // 全局缓存（内存），所有标签页共享；SW 被回收后自动清空，属于可接受行为。
-let cache = {
-  data: null,   // 已规范化的数据
-  fetchedAt: 0  // 上次成功获取时间戳
-};
+let cache = { data: null, fetchedAt: 0 };
+let latencyCache = { ms: null, fetchedAt: 0 };
 
 let cacheTtlMs = DEFAULT_CACHE_TTL_MS;
 let inflightPromise = null;
+let inflightLatencyPromise = null;
 
 // 缓存 TTL 跟随设置中的刷新间隔，并随设置变化更新。
 loadSettings().then(function (settings) {
@@ -78,8 +81,8 @@ async function fetchIpInfo() {
   return normalizeIpInfo(json);
 }
 
-function isCacheFresh(now) {
-  return cache.data && (now - cache.fetchedAt) < cacheTtlMs;
+function isCacheFresh(c, now) {
+  return c && c.data && (now - c.fetchedAt) < cacheTtlMs;
 }
 
 function cachedResult() {
@@ -103,7 +106,7 @@ async function doFetchAndCache() {
 
 function getIpInfo(forceRefresh) {
   const now = Date.now();
-  if (!forceRefresh && isCacheFresh(now)) {
+  if (!forceRefresh && isCacheFresh(cache, now)) {
     return Promise.resolve(cachedResult());
   }
   // 去重：同一时刻多个标签页请求只发一次网络请求（强制刷新除外）。
@@ -116,6 +119,58 @@ function getIpInfo(forceRefresh) {
   return inflightPromise;
 }
 
+// ----------------------------------------------------------------------------
+// 延迟测量：fetch 到 ChatGPT，只测 TTFB（响应头到达即计时，不读取 body）。
+// ----------------------------------------------------------------------------
+async function fetchLatency() {
+  const start = Date.now();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(function () { controller.abort(); }, LATENCY_TIMEOUT_MS);
+    await fetch(LATENCY_URL, {
+      method: "GET",
+      cache: "no-store",
+      signal: controller.signal,
+      redirect: "follow",
+      headers: { "Accept": "text/html" }
+    });
+    clearTimeout(timer);
+    return Math.max(1, Math.round(Date.now() - start));
+  } catch (err) {
+    const error = new Error("延迟测量失败");
+    error.code = (err && err.name === "AbortError") ? "timeout" : "network";
+    throw error;
+  }
+}
+
+async function doFetchLatencyAndCache() {
+  try {
+    const ms = await fetchLatency();
+    latencyCache.ms = ms;
+    latencyCache.fetchedAt = Date.now();
+    return { ok: true, ms: ms, source: "network", stale: false, error: null };
+  } catch (err) {
+    if (latencyCache.ms !== null) {
+      return { ok: false, ms: latencyCache.ms, source: "cache", stale: true, error: err.code || "error" };
+    }
+    return { ok: false, ms: null, source: null, stale: false, error: err.code || "error" };
+  }
+}
+
+function getLatency(forceRefresh) {
+  const now = Date.now();
+  if (!forceRefresh && latencyCache.ms !== null && (now - latencyCache.fetchedAt) < cacheTtlMs) {
+    return Promise.resolve({ ok: true, ms: latencyCache.ms, source: "cache", stale: false, error: null });
+  }
+  if (!forceRefresh && inflightLatencyPromise) {
+    return inflightLatencyPromise;
+  }
+  inflightLatencyPromise = doFetchLatencyAndCache().finally(function () {
+    inflightLatencyPromise = null;
+  });
+  return inflightLatencyPromise;
+}
+
 chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
   if (message && message.type === "GET_IP_INFO") {
     const force = Boolean(message.forceRefresh);
@@ -125,5 +180,13 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     // 返回 true 表示将异步调用 sendResponse
     return true;
   }
+  if (message && message.type === "GET_LATENCY") {
+    const force = Boolean(message.forceRefresh);
+    getLatency(force).then(function (result) {
+      sendResponse(result);
+    });
+    return true;
+  }
   return false;
 });
+

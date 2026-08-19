@@ -10,6 +10,7 @@
   const hudOpacityEl = document.getElementById("hudOpacity");
   const hudOpacityVal = document.getElementById("hudOpacityVal");
   const hoverExpandEl = document.getElementById("hoverExpand");
+  const lockHudEl = document.getElementById("lockHud");
   const savedEl = document.getElementById("saved");
   const refreshIntervalRadios = document.querySelectorAll('input[name="refreshInterval"]');
   const maskIpRadios = document.querySelectorAll('input[name="maskIp"]');
@@ -27,6 +28,7 @@
   function render(settings) {
     showHudEl.checked = settings.showHud;
     hoverExpandEl.checked = settings.hoverExpand;
+    lockHudEl.checked = settings.lockHud;
     hudOpacityEl.value = String(Math.round(settings.hudOpacity * 100));
     hudOpacityVal.textContent = hudOpacityEl.value + "%";
 
@@ -42,6 +44,7 @@
     return {
       showHud: showHudEl.checked,
       hoverExpand: hoverExpandEl.checked,
+      lockHud: lockHudEl.checked,
       hudOpacity: Number(hudOpacityEl.value) / 100,
       refreshInterval: Number(document.querySelector('input[name="refreshInterval"]:checked').value),
       maskIp: document.querySelector('input[name="maskIp"]:checked').value === "true"
@@ -57,6 +60,7 @@
   function bind() {
     showHudEl.addEventListener("change", persist);
     hoverExpandEl.addEventListener("change", persist);
+    lockHudEl.addEventListener("change", persist);
     hudOpacityEl.addEventListener("input", function () {
       hudOpacityVal.textContent = hudOpacityEl.value + "%";
     });

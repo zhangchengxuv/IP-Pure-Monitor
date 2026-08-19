@@ -15,6 +15,7 @@
   const typeEl = document.getElementById("type");
   const asnEl = document.getElementById("asn");
   const orgEl = document.getElementById("org");
+  const latencyEl = document.getElementById("latency");
   const statusEl = document.getElementById("status");
   const copyBtn = document.getElementById("copy");
   const refreshBtn = document.getElementById("refresh");
@@ -43,6 +44,14 @@
     levelEl.style.color = color;
     levelEl.style.background = hexToRgba(color, 0.14);
     levelEl.style.borderColor = hexToRgba(color, 0.4);
+  }
+
+  function renderLatency(ms) {
+    if (ms === null || ms === undefined) {
+      latencyEl.textContent = "—";
+    } else {
+      latencyEl.textContent = ms + " ms";
+    }
   }
 
   function render(data, meta) {
@@ -80,26 +89,32 @@
     }
   }
 
-  function request(forceRefresh) {
-    setStatus("检测中…");
+  function send(type, force) {
     return new Promise(function (resolve) {
       try {
-        chrome.runtime.sendMessage(
-          { type: "GET_IP_INFO", forceRefresh: Boolean(forceRefresh) },
-          function (response) {
-            if (chrome.runtime.lastError) {
-              render(null, {});
-              resolve();
-              return;
-            }
-            render(response && response.data ? response.data : null, response || {});
-            resolve();
+        chrome.runtime.sendMessage({ type: type, forceRefresh: Boolean(force) }, function (response) {
+          if (chrome.runtime.lastError) {
+            resolve({ ok: false });
+            return;
           }
-        );
+          resolve(response || { ok: false });
+        });
       } catch (e) {
-        render(null, {});
-        resolve();
+        resolve({ ok: false });
       }
+    });
+  }
+
+  function request(forceRefresh) {
+    setStatus("检测中…");
+    return Promise.all([
+      send("GET_IP_INFO", forceRefresh),
+      send("GET_LATENCY", forceRefresh)
+    ]).then(function (results) {
+      const ipRes = results[0] || {};
+      const latRes = results[1] || {};
+      render(ipRes.data || null, ipRes);
+      renderLatency(latRes.ms);
     });
   }
 

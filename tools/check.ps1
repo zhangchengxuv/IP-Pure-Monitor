@@ -29,7 +29,7 @@ $lines.Add("---- MARKER CHECK ----")
 $jsFiles = Get-ChildItem -Recurse -File $root -Include *.js | Where-Object { $_.FullName -notmatch "\\tools\\" }
 foreach ($f in $jsFiles) {
   $content = [System.IO.File]::ReadAllText($f.FullName)
-  $bad = ($content -match "__CSS_PART2__|__UI_PART2__|__UI_PART2B__|__UI_PART3__")
+  $bad = ($content -match "__UI_P1B__|__UI_P2__|__UI_P2B__|__UI_P3__|__UI_P3B__|__CSS_P2__|__CSS_PART2__|__UI_PART2__")
   $lines.Add($f.FullName.Substring($root.Length + 1) + " leftoverMarker=" + $bad)
 }
 

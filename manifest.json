@@ -8,7 +8,8 @@
     "storage"
   ],
   "host_permissions": [
-    "https://my.ippure.com/*"
+    "https://my.ippure.com/*",
+    "https://chatgpt.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -36,8 +37,8 @@
   "content_scripts": [
     {
       "matches": [
-        "http://*/*",
-        "https://*/*"
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
       ],
       "js": [
         "shared/constants.js",
