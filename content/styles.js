@@ -2,7 +2,7 @@
 
 // ============================================================================
 // content/styles.js — HUD 样式（字符串注入 Shadow DOM）
-// 支持：深浅色自适应、拖动手柄、边缘吸附动画、ChatGPT 延迟显示。
+// 支持：深浅色自适应、拖动手柄、自由定位、ChatGPT 延迟显示。
 // ============================================================================
 
 const HUD_CSS = `
@@ -13,7 +13,7 @@ const HUD_CSS = `
   right: 12px !important;
   left: auto !important;
   z-index: 2147483647 !important;
-  pointer-events: none !important;
+  pointer-events: auto !important;
   font-family: Inter, "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif !important;
   font-size: 12px !important;
   line-height: 1.4 !important;
@@ -400,4 +400,3 @@ const HUD_CSS = `
   .toast { transition: none; }
 }
 `;
-

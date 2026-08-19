@@ -55,7 +55,9 @@ function createHudController(options) {
       right: "12px",
       left: "auto",
       "z-index": "2147483647",
-      "pointer-events": "none"
+      // 宿主本身必须可命中；否则 Shadow DOM 内部虽然设置了 auto，
+      // 在部分 Chromium 页面上 pointerdown 不会稳定到达 HUD。
+      "pointer-events": "auto"
     };
     for (const k in pos) {
       if (Object.prototype.hasOwnProperty.call(pos, k)) {
@@ -178,13 +180,15 @@ function createHudController(options) {
     position.offsetY = Math.max(0, Math.min(position.offsetY, maxY));
   }
 
-  function snapToEdge() {
+  function saveDraggedPosition() {
     if (!hudEl) return;
     const w = window.innerWidth || 0;
     const rect = hudEl.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     position.side = (w > 0 && centerX < w / 2) ? "left" : "right";
-    position.offsetX = EDGE_MARGIN;
+    position.offsetX = position.side === "left"
+      ? Math.round(rect.left)
+      : Math.round(w - rect.right);
     position.offsetY = Math.round(rect.top);
     clampPositionToViewport();
     applyPosition();
@@ -416,8 +420,12 @@ function createHudController(options) {
   function onPointerDown(e) {
     if (settings.lockHud) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    const t = e.target;
-    if (!t || t.closest(".ip-btn, .refresh-btn, .detail-ip")) return;
+    const path = typeof e.composedPath === "function" ? e.composedPath() : [];
+    const clickedControl = path.some(function (node) {
+      return node && node.nodeType === 1 && typeof node.matches === "function" &&
+        node.matches(".ip-btn, .refresh-btn, .detail-ip");
+    });
+    if (clickedControl) return;
     clearTimeout(state.hoverEnterTimer);
     clearTimeout(state.hoverLeaveTimer);
     const rect = hudEl.getBoundingClientRect();
@@ -429,6 +437,7 @@ function createHudController(options) {
       startTop: rect.top,
       moved: false
     };
+    try { host.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
     host.classList.add("dragging");
     hudEl.classList.add("dragging");
   }
@@ -456,11 +465,12 @@ function createHudController(options) {
     if (!drag || e.pointerId !== drag.pointerId) return;
     host.classList.remove("dragging");
     hudEl.classList.remove("dragging");
+    try { host.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
     const moved = drag.moved;
     drag = null;
     if (moved) {
       suppressClickUntil = Date.now() + 200;
-      snapToEdge();
+      saveDraggedPosition();
     }
   }
 
@@ -535,7 +545,7 @@ function createHudController(options) {
     nodes.refreshBtn.addEventListener("click", refreshHandler);
     nodes.dRefresh.addEventListener("click", refreshHandler);
 
-    hudEl.addEventListener("pointerdown", onPointerDown);
+    host.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("pointermove", onPointerMove, true);
     window.addEventListener("pointerup", onPointerUp, true);
     window.addEventListener("pointercancel", onPointerUp, true);
@@ -612,6 +622,7 @@ function createHudController(options) {
     if (docMouseDown) document.removeEventListener("mousedown", docMouseDown, true);
     if (docKeyDown) document.removeEventListener("keydown", docKeyDown, true);
     if (resizeHandler) window.removeEventListener("resize", resizeHandler);
+    if (host) host.removeEventListener("pointerdown", onPointerDown, true);
     window.removeEventListener("pointermove", onPointerMove, true);
     window.removeEventListener("pointerup", onPointerUp, true);
     window.removeEventListener("pointercancel", onPointerUp, true);
@@ -638,8 +649,4 @@ function createHudController(options) {
     refreshColorScheme: applyColorScheme
   };
 }
-
-
-
-
 
